@@ -14,40 +14,15 @@ namespace cache
 	private:
 		Line* data;
 		int size;
-
 	public:
-		Way() : data(nullptr), size(0) {}
+		Way(int size);
+		~Way();
 
-		~Way() 
-		{
-			delete[] data;
-		}
+		Line* getData() const;
 
-		void init(int n)
-		{
-			if (data != nullptr)
-			{
-				delete[] data;
-			}
-			size = n;
-			data = new Line[n];
-			for (int i = 0; i < n; ++i)
-			{
-				data[i].tag = 0;
-				data[i].LRU = 0;
-				data[i].dirty = false;
-			}
-		}
+		int getSize() const;
 
-		Line* getData() const
-		{
-			return data;
-		}
-
-		int getSize() const
-		{
-			return size;
-		}
+		int tag(int set) const;
 	};
 	
 }

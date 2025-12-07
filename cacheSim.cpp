@@ -2,6 +2,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include "Way.h"
 
 using std::FILE;
 using std::string;
@@ -10,6 +12,30 @@ using std::endl;
 using std::cerr;
 using std::ifstream;
 using std::stringstream;
+using namespace cache;
+using cache::Way;
+
+const int ADDRESS_MISSING = 0xFFFFFFFF;
+
+int ConvertHexStringToInt(string hexString)
+{
+	// Convert the address string from hex to an integer using std::stoul
+	return static_cast<int>(std::stoul(hexString, nullptr, 16));
+}
+
+int getTag(int address, int numSetBits) 
+{
+	return address >> numSetBits;
+}
+
+int getSet(int address, int numSetBits)
+{
+	int setMask = (1 << numSetBits) - 1;
+	int set = address & setMask;
+	return set;
+}
+
+
 
 int main(int argc, char **argv) {
 
@@ -59,6 +85,17 @@ int main(int argc, char **argv) {
 			return 0;
 		}
 	}
+	// clac Way size, set size etc.
+	// Calculate L1 sizes
+	int L1TotalBlocks = L1Size - BSize;	
+	int L1NumBlocksPerWay = L1TotalBlocks - L1Assoc;
+	int L1SetSize = L1NumBlocksPerWay - L1Assoc;
+	int L1NumOfWays = 1 << L1Assoc;
+	// Calculate L2 sizes
+	int L2TotalBlocks = L2Size - BSize;
+	int L2NumBlocksPerWay = L2TotalBlocks - L2Assoc;
+	int L2SetSize = L2NumBlocksPerWay - L2Assoc;
+	int L2NumOfWays = 1 << L2Assoc;
 
 	// init ways / times ++++
 	int L1AccessCount = 0; // counts how many times L1 was accesed;
@@ -66,16 +103,47 @@ int main(int argc, char **argv) {
 	int L1MissCount = 0; // counts how many times L1 missed;
 	int L2MissCount = 0; // counts how many times L2 missed;
 
-	while (getline(file, line)) {
+	std::vector<Way> l1_ways(L1NumOfWays, Way(L1NumBlocksPerWay));
+	std::vector<Way> l2_ways (L2NumOfWays,Way(L2NumBlocksPerWay));
 
+	bool found = false;
+	while (getline(file, line))
+	{
 		stringstream ss(line);
 		string address;
 		char operation = 0; // read (R) or write (W)
-		if (!(ss >> operation >> address)) {
+		if (!(ss >> operation >> address))
+		{
 			// Operation appears in an Invalid format
 			cout << "Command Format error" << endl;
 			return 0;
 		}
+		
+		int addressInt = ConvertHexStringToInt(address);
+		int addressSetAndTag = addressInt >> BSize;
+		int L1Tag = getTag(addressInt, L1SetSize);
+		int L1Set = getSet(addressInt, L1SetSize);
+		
+		int L2Tag = getTag(addressInt, L2SetSize);
+		int L2Set = getSet(addressInt, L2SetSize);
+
+		//find which way (if any) has the address
+		for (int way = 0; way < L1NumOfWays; way++)
+		{
+			if (L1Tag == l1_ways[way].tag(L1Set))
+			{
+				found = true;
+				break;
+			}
+		}
+
+		//if L1 hit - update dirty and LRU
+
+		//else L1 miss - check L2
+		
+
+
+
 
 		// DEBUG - remove this line
 		cout << "operation: " << operation;
