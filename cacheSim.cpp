@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include "Way.h"
+//#include "cache.h"
 
 using std::FILE;
 using std::string;
@@ -16,6 +16,14 @@ using namespace cache;
 using cache::Way;
 
 const int ADDRESS_MISSING = 0xFFFFFFFF;
+
+struct Line
+{
+	int tag;
+	int LRU;
+	bool dirty;
+	bool free = true;
+};
 
 int ConvertHexStringToInt(string hexString)
 {
@@ -34,6 +42,36 @@ int getSet(int address, int numSetBits)
 	int set = address & setMask;
 	return set;
 }
+
+void updateLRUs(std::vector<Line>& set, int hitWay)
+{
+	int hitLRU = set[hitWay].LRU;
+	for (int i = 0; i < set.size(); ++i) {
+		if (set[i].LRU < hitLRU) {
+			set[i].LRU++;
+		}
+	}
+	set[hitWay].LRU = 0;
+}
+
+
+int checkHit(std::vector<std::vector<Line>>& cache, int address, int tag, int set, int numOfWays)
+{
+	for (int way = 0; way < numOfWays; ++way) {
+		if (cache[set][way].tag == tag && !cache[set][way].free) {
+			return way; // Hit - return way number
+		}
+	}
+	return -1; // Miss
+}
+
+void updateDirtyBit(std::vector<std::vector<Line>>& cache, int set, int way, char operation)
+{
+	if (operation == 'W') {
+		cache[set][way].dirty = true;
+	}
+}
+
 
 
 
@@ -102,13 +140,14 @@ int main(int argc, char **argv) {
 	int L2AccessCount = 0; // counts how many times L2 was accesed;
 	int L1MissCount = 0; // counts how many times L1 missed;
 	int L2MissCount = 0; // counts how many times L2 missed;
+	int memAccessCount = 0; // counts how many times mem was accesed;
 
-	std::vector<Way> l1_ways(L1NumOfWays, Way(L1NumBlocksPerWay));
-	std::vector<Way> l2_ways (L2NumOfWays,Way(L2NumBlocksPerWay));
-
-	bool found = false;
+	std::vector<std::vector<Line>> L1; // fix sizes
+	std::vector<std::vector<Line>> L2; 
+	
 	while (getline(file, line))
 	{
+		//get the adrress:
 		stringstream ss(line);
 		string address;
 		char operation = 0; // read (R) or write (W)
@@ -118,7 +157,8 @@ int main(int argc, char **argv) {
 			cout << "Command Format error" << endl;
 			return 0;
 		}
-		
+
+		// parse the address:
 		int addressInt = ConvertHexStringToInt(address);
 		int addressSetAndTag = addressInt >> BSize;
 		int L1Tag = getTag(addressInt, L1SetSize);
@@ -127,21 +167,52 @@ int main(int argc, char **argv) {
 		int L2Tag = getTag(addressInt, L2SetSize);
 		int L2Set = getSet(addressInt, L2SetSize);
 
-		//find which way (if any) has the address
-		for (int way = 0; way < L1NumOfWays; way++)
+
+		//check L1
+		L1AccessCount++;
+		int L1Hit = checkHit(L1, addressInt, L1Tag, L1Set, L1NumOfWays); //returns the way number if hit, -1 if miss
+		if (L1Hit>=0)
 		{
-			if (L1Tag == l1_ways[way].tag(L1Set))
-			{
-				found = true;
-				break;
-			}
+			updateLRUs(L1[L1Set], L1Hit);
+			updateDirtyBit(L1, L1Set, L1Hit, operation);
+			continue; // go to next address
 		}
 
-		//if L1 hit - update dirty and LRU
+		// L1 miss
+		L1MissCount++;
+		//check L2
+		L2AccessCount++;
+		int L2Hit = checkHit(L2, addressInt, L2Tag, L2Set, L2NumOfWays); //returns the way number if hit, -1 if miss
+		if (L2Hit>=0)
+		{
+			updateLRUs(L2[L2Set], L2Hit);
+			updateDirtyBit(L2, L2Set, L2Hit, operation);
 
-		//else L1 miss - check L2
-		
+			//bring to l1 if needed
+			if (WrAlloc==1 || operation=='R')
+			{
+				//TODO:
+				//find a free line if one exists
+				//if no line is free, evict LRU and update LRUs
+				//if evicted.dirty update L2 (LRUs, dirty bit))
+			}
 
+			continue; // go to next address
+		}
+		// L2 miss
+		L2MissCount++;
+		memAccessCount++;
+		//bring to l2 if needed
+		if (WrAlloc==1 || operation=='R')
+		{
+			//find a free line in L2 if one exists
+			//if no line is free, evict LRU and update LRUs
+				//free this line from L1 if needed
+			//bring to L1
+				//find a free line if one exists
+				//if no line is free, evict LRU and update LRUs
+				//if evicted.dirty update L2 (LRUs, dirty bit))
+		}
 
 
 
@@ -176,3 +247,63 @@ int main(int argc, char **argv) {
 
 	return 0;
 }
+
+
+//leftovers:
+
+
+//check L1 cache for hit/miss
+bool checkL1(int address, int tag, int set, std::vector<std::vector<Line>>& L1, int numOfWays, int WrAlloc, char operation) 
+{
+	// Iterate through the ways in the set to check for a hit
+	for (int way = 0; way < numOfWays; ++way) {
+		if (L1[set][way].tag == tag && !L1[set][way].free) {
+			// Hit
+			// Update LRU and dirty bit if it's a write operation
+			if (operation == 'W') {
+				L1[set][way].dirty = true;
+			}
+			// update LRUs:
+			updateLRUs(L1[set], way);
+			return true; // Hit
+		}
+	}
+	if (!WrAlloc && operation == 'W') {
+		return false; // Miss, no write allocate
+	}
+
+	// Miss and write allocate or read operation
+	// Find a free line if one exists
+	for (int way = 0; way < numOfWays; ++way) {
+		if (L1[set][way].free) {
+			// Use this free line
+			L1[set][way].tag = tag;
+			L1[set][way].free = false;
+			L1[set][way].dirty = (operation == 'W');
+			// update LRUs:
+			updateLRUs(L1[set], way);
+			return false; // Miss
+		}
+	}
+
+	// No free line found, need to evict the LRU line
+	int lruWay = 0;
+	for (int way = 1; way < numOfWays; ++way) {
+		if (L1[set][way].LRU > L1[set][lruWay].LRU) {
+			lruWay = way;
+		}
+	}
+
+	//if the line is dirty, update L2
+
+
+
+	// Replace the line
+	L1[set][lruWay].tag = tag;
+	L1[set][lruWay].free = false;
+	L1[set][lruWay].dirty = (operation == 'W');
+	// update LRUs:
+	updateLRUs(L1[set], lruWay);
+	return false; // Miss
+}
+
