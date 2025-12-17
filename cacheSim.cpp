@@ -14,9 +14,9 @@ using std::stringstream;
 
 struct Line
 {
-	int tag;
-	int LRU;
-	bool dirty;
+	unsigned int tag = 0;
+	unsigned int LRU = 0;
+	bool dirty = false;
 	bool free = true;
 };
 
@@ -26,23 +26,25 @@ int ConvertHexStringToInt(string hexString)
 	return static_cast<int>(std::stoul(hexString, nullptr, 16));
 }
 
-int getTag(int address, int numSetBits) 
+int getTag(unsigned int address, unsigned int numSetBits) 
 {
 	return address >> numSetBits;
 }
 
-int getSet(int address, int numSetBits)
+int getSet(unsigned int address, unsigned int numSetBits)
 {
-	int setMask = (1 << numSetBits) - 1;
-	int set = address & setMask;
+	unsigned int setMask = (1 << numSetBits) - 1;
+	unsigned int set = address & setMask;
 	return set;
 }
 
 void updateLRUs(std::vector<Line>& set, int hitWay)
 {
-	int hitLRU = set[hitWay].LRU;
-	for (int i = 0; i < set.size(); ++i) {
-		if (set[i].LRU < hitLRU) {
+	unsigned int hitLRU = set[hitWay].LRU;
+	for (int i = 0; i < set.size(); ++i) 
+	{
+		if (set[i].LRU <= hitLRU) 
+		{
 			set[i].LRU++;
 		}
 	}
@@ -50,7 +52,8 @@ void updateLRUs(std::vector<Line>& set, int hitWay)
 }
 
 
-int checkHit(std::vector<std::vector<Line>>& cache, int address, int tag, int set, int numOfWays)
+int checkHit(std::vector<std::vector<Line>>& cache, unsigned int address, 
+			unsigned int tag, unsigned int set, unsigned int numOfWays)
 {
 	//cout << "Checking address " << address <<  endl;	
 	//cout << "Checking set " << set << " with tag " << tag <<  endl;	
@@ -66,7 +69,8 @@ int checkHit(std::vector<std::vector<Line>>& cache, int address, int tag, int se
 	return -1; // Miss
 }
 
-void updateDirtyBit(std::vector<std::vector<Line>>& cache, int set, int way, char operation)
+void updateDirtyBit(std::vector<std::vector<Line>>& cache, unsigned int set,
+					unsigned int way, char operation)
 {
 	if (operation == 'W') 
 	{
@@ -86,7 +90,8 @@ int findFreeWay(std::vector<Line>& set)
 	return -1; // No free way found
 }
 
-Line bringToLayer(std::vector<std::vector<Line>>& L, int Set, int Tag, int NumOfWays, char operation) //returns evicted line info if any
+Line bringToLayer(std::vector<std::vector<Line>>& L, unsigned int Set, unsigned int Tag,
+				unsigned int NumOfWays, char operation) //returns evicted line info if any
 {
 	//find a free way for this set if one exists
 	int way = findFreeWay(L[Set]);
@@ -121,8 +126,9 @@ Line bringToLayer(std::vector<std::vector<Line>>& L, int Set, int Tag, int NumOf
 	return evictedLine; // Return evicted line info
 }
 
-void handleEvictedLineFromL1(std::vector<std::vector<Line>>& L2, Line& evictedLine, int L1NumBlocksPerWay, 
-							 int L1Set, int L2NumBlocksPerWay, int L2NumOfWays) 
+void handleEvictedLineFromL1(std::vector<std::vector<Line>>& L2, Line& evictedLine,
+							unsigned int L1NumBlocksPerWay, unsigned int L1Set, 
+							unsigned int L2NumBlocksPerWay, int L2NumOfWays) 
 {
 	
 	if (evictedLine.free)
@@ -135,9 +141,9 @@ void handleEvictedLineFromL1(std::vector<std::vector<Line>>& L2, Line& evictedLi
 	if (evictedLine.dirty)
 	{
 		// Get evicted line's address to find its L2 set and tag
-		int evictedAddress = (evictedLine.tag << L1NumBlocksPerWay) | L1Set;
-		int evictedL2Tag = getTag(evictedAddress, L2NumBlocksPerWay);
-		int evictedL2Set = getSet(evictedAddress, L2NumBlocksPerWay);
+		unsigned int evictedAddress = (evictedLine.tag << L1NumBlocksPerWay) | L1Set;
+		unsigned int evictedL2Tag = getTag(evictedAddress, L2NumBlocksPerWay);
+		unsigned int evictedL2Set = getSet(evictedAddress, L2NumBlocksPerWay);
 		int evictedL2Way = checkHit(L2, evictedAddress, evictedL2Tag, evictedL2Set, L2NumOfWays);
 		// Should always be a hit
 		updateDirtyBit(L2, evictedL2Set, evictedL2Way, 'W');
@@ -243,10 +249,10 @@ int main(int argc, char **argv)
 	
 	while (getline(file, line))
 	{
-		cout << "------------------------" << endl;
-		LiPrint(L1,1);
-		cout << "------------------------" << endl;
-		LiPrint(L2,2);
+		//cout << "------------------------" << endl;
+		//LiPrint(L1,1);
+		//cout << "------------------------" << endl;
+		//LiPrint(L2,2);
 		//get the adrress:
 		stringstream ss(line);
 		string address;
@@ -260,37 +266,37 @@ int main(int argc, char **argv)
 
 		operation = toupper(operation);
 		// DEBUG - remove this line
-		cout << "operation: " << operation;
+		//cout << "operation: " << operation;
 
 		string cutAddress = address.substr(2); // Removing the "0x" part of the address
 
 		// DEBUG - remove this line
-		cout << ", address (hex)" << cutAddress;
+		//cout << ", address (hex)" << cutAddress;
 
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
 
 		// DEBUG - remove this line
-		cout << " (dec) " << num << endl;
+		//cout << " (dec) " << num << endl;
 
 
 		// parse the address:
-		int addressInt = ConvertHexStringToInt(address);
-		int addressSetAndTag = addressInt >> BSize;
+		unsigned int addressInt = ConvertHexStringToInt(address);
+		unsigned int addressSetAndTag = addressInt >> BSize;
 		//cout << "addressSetAndTag: " << addressSetAndTag << endl;
-		int L1Tag = getTag(addressSetAndTag, L1NumBlocksPerWay);
-		int L1Set = getSet(addressSetAndTag, L1NumBlocksPerWay);
-		cout << "L1 Tag: " << L1Tag << ", L1 Set: " << L1Set << endl;
-		int L2Tag = getTag(addressSetAndTag, L2NumBlocksPerWay);
-		int L2Set = getSet(addressSetAndTag, L2NumBlocksPerWay);
-		cout << "L2 Tag: " << L2Tag << ", L2 Set: " << L2Set << endl;
+		unsigned int L1Tag = getTag(addressSetAndTag, L1NumBlocksPerWay);
+		unsigned int L1Set = getSet(addressSetAndTag, L1NumBlocksPerWay);
+		//cout << "L1 Tag: " << L1Tag << ", L1 Set: " << L1Set << endl;
+		unsigned int L2Tag = getTag(addressSetAndTag, L2NumBlocksPerWay);
+		unsigned int L2Set = getSet(addressSetAndTag, L2NumBlocksPerWay);
+		//cout << "L2 Tag: " << L2Tag << ", L2 Set: " << L2Set << endl;
 
 		//check L1
 		L1AccessCount++;
 		int L1Hit = checkHit(L1, addressInt, L1Tag, L1Set, L1NumOfWays); //returns the way number if hit, -1 if miss
 		if (L1Hit >= 0)
 		{
-			cout << "L1 Hit!" << endl;
+			//cout << "L1 Hit!" << endl;
 			updateLRUs(L1[L1Set], L1Hit);
 			updateDirtyBit(L1, L1Set, L1Hit, operation);
 			continue; // go to next address
@@ -306,7 +312,7 @@ int main(int argc, char **argv)
 		//L2 hit
 		if (L2Hit >= 0)
 		{
-			cout << "L2 Hit!" << endl;
+			//cout << "L2 Hit!" << endl;
 			updateLRUs(L2[L2Set], L2Hit);
 			updateDirtyBit(L2, L2Set, L2Hit, operation);
 			if (WrAlloc==1 || operation =='R') // bring to l1
@@ -320,6 +326,7 @@ int main(int argc, char **argv)
 		// L2 miss
 		L2MissCount++;
 		memAccessCount++;
+		//cout << "Memory Access!" << endl;
 		if (WrAlloc==1 || operation=='R') // bring to l2
 		{
 			// bring to L2
@@ -350,12 +357,12 @@ int main(int argc, char **argv)
 		(double)L2AccessCount * L2Cyc +
 		(double)memAccessCount * MemCyc) / L1AccessCount;
 	// Print all the values in use
-	cout << "L1MissCount: " << L1MissCount << endl;
-	cout << "L2MissCount: " << L2MissCount << endl;
-	cout << "L1AccessCount: " << L1AccessCount << endl;
-	cout << "L2AccessCount: " << L2AccessCount << endl;
-	cout << "memAccessCount: " << memAccessCount << endl;
-	cout << "avgAccTime: " << avgAccTime << endl;
+	//cout << "L1MissCount: " << L1MissCount << endl;
+	//cout << "L2MissCount: " << L2MissCount << endl;
+	//cout << "L1AccessCount: " << L1AccessCount << endl;
+	//cout << "L2AccessCount: " << L2AccessCount << endl;
+	//cout << "memAccessCount: " << memAccessCount << endl;
+	//cout << "avgAccTime: " << avgAccTime << endl;
 
 
 	printf("L1miss=%.03f ", L1MissRate);
